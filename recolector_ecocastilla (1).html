@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Recolector Eco Castilla</title>
+  <style>
+    :root{
+      --bg:#0b1520;
+      --panel:#0f1f2e;
+      --text:#e7f6ff;
+      --muted:#9cc7d6;
+      --green:#2ecc71;
+      --red:#e74c3c;
+      --blue:#3498db;
+      --yellow:#f1c40f;
+      --brown:#8e6a3a;
+      --shadow:0 12px 30px rgba(0,0,0,.35);
+    }
+    html,body{margin:0;height:100%;background:linear-gradient(180deg,var(--bg),#071019);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Ubuntu,"Helvetica Neue",Arial,sans-serif;}
+    .wrap{display:flex;flex-direction:column;align-items:center;gap:12px;min-height:100vh;padding:16px 12px 100px;}
+    header{display:flex;align-items:center;justify-content:space-between;gap:12px;width:min(1024px,96vw);}
+    .brand{display:flex;align-items:center;gap:12px}
+    .brand .logo{width:42px;height:42px;border-radius:12px;background:conic-gradient(from 180deg at 50% 50%, var(--green), var(--blue), var(--yellow), var(--green));box-shadow:var(--shadow)}
+    .brand h1{font-size:clamp(18px,3.6vw,26px);margin:0;letter-spacing:.3px}
+    .panel{width:min(1024px,96vw);background:linear-gradient(180deg,var(--panel),#0b1a27);border:1px solid rgba(255,255,255,.06);box-shadow:var(--shadow);border-radius:18px;padding:12px}
+
+    /* HUD */
+    .hud{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:10px;border-radius:14px;background:rgba(255,255,255,.04)}
+    .hud .stat{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:12px;background:rgba(0,0,0,.25)}
+    .badge{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;font-weight:700;border-radius:10px;color:#0b0f14;padding:0 8px}
+    .b-red{background:var(--red)} .b-blue{background:var(--blue)} .b-green{background:var(--green)} .b-brown{background:var(--brown);color:#fff} .b-yellow{background:var(--yellow)}
+
+    /* Canvas frame */
+    .stage{position:relative;display:grid;place-items:center;border-radius:16px;overflow:hidden;background:radial-gradient(1200px 500px at 50% 120%, rgba(46,204,113,.15), transparent 60%),
+      linear-gradient(180deg,#09131e,#09131e 60%, #08111a)}
+    canvas{display:block;width:100%;height:auto;}
+
+    /* Controls */
+    .controls{position:fixed;left:0;right:0;bottom:10px;display:flex;justify-content:center;gap:18px;pointer-events:none}
+    .controls .btn{pointer-events:auto;user-select:none;-webkit-tap-highlight-color:transparent;background:rgba(255,255,255,.08);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:14px 18px;min-width:92px;text-align:center;font-weight:700;color:var(--text);box-shadow:var(--shadow)}
+    .controls .btn:active{transform:scale(.98)}
+
+    /* Modals */
+    .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.5)}
+    .modal.open{display:grid}
+    .card{width:min(540px,92vw);background:linear-gradient(180deg,#0f2131,#0c1a28);border:1px solid rgba(255,255,255,.08);border-radius:20px;box-shadow:var(--shadow);padding:20px}
+    .card h2{margin:0 0 8px}
+    .card p{margin:6px 0;color:var(--muted)}
+    .card .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+    .card .primary{background:var(--green);color:#062512;border:none;border-radius:12px;padding:10px 14px;font-weight:800}
+    .card .ghost{background:transparent;color:var(--text);border:1px solid rgba(255,255,255,.2);border-radius:12px;padding:10px 14px;font-weight:700}
+
+    .progress{height:10px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden}
+    .progress > i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--green),#8ef3c1)}
+
+    footer{opacity:.7;font-size:12px;margin-top:10px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <h1>Recolector <strong>Eco Castilla</strong> ♻️</h1>
+      </div>
+      <div class="hud panel">
+        <div class="stat">Nivel: <span id="levelName" class="badge b-red">Rojo</span></div>
+        <div class="stat">Puntos: <strong id="score">0</strong></div>
+        <div class="stat">Objetivo: <strong id="target">12</strong></div>
+        <div class="stat">Tiempo: <strong id="time">00:00</strong></div>
+        <div class="stat" title="Velocidad"><span class="badge" id="spd">1x</span></div>
+      </div>
+    </header>
+
+    <div class="panel stage">
+      <canvas id="game" width="960" height="540" aria-label="Juego de reciclaje por niveles"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="progress" aria-label="Progreso del nivel"><i id="progressBar"></i></div>
+    </div>
+
+    <footer>Controles: ⬅️ ➡️ en laptop · Botones táctiles en móvil · Hecho para Eco Castilla</footer>
+  </div>
+
+  <!-- Touch Controls -->
+  <div class="controls" id="touchControls">
+    <button class="btn" id="btnLeft">⬅️ Izquierda</button>
+    <button class="btn" id="btnRight">Derecha ➡️</button>
+  </div>
+
+  <!-- Modals -->
+  <div class="modal open" id="modalStart" role="dialog" aria-modal="true">
+    <div class="card">
+      <h2>¡Bienvenida/o al juego! 🌍♻️</h2>
+      <p>Clasifica residuos por <strong>niveles</strong>. Mueve el contenedor y atrapa los objetos correctos antes de que el tiempo se acabe.</p>
+      <ul>
+        <li><span class="badge b-red">Rojo</span> Plásticos</li>
+        <li><span class="badge b-blue">Azul</span> Papel/Cartón</li>
+        <li><span class="badge b-green">Verde</span> Vidrio</li>
+        <li><span class="badge b-brown">Marrón</span> Orgánicos</li>
+        <li><span class="badge b-yellow">Amarillo</span> Tóxicos</li>
+      </ul>
+      <div class="row">
+        <button class="primary" id="btnPlay">Comenzar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="modalLevel" role="dialog" aria-modal="true">
+    <div class="card">
+      <h2 id="levelTitle">Nivel completado</h2>
+      <p id="levelMsg">Prepárate para el siguiente nivel.</p>
+      <div class="row">
+        <button class="primary" id="btnNext">Continuar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="modalFail" role="dialog" aria-modal="true">
+    <div class="card">
+      <h2>⏰ ¡Tiempo agotado!</h2>
+      <p id="failMsg">No alcanzaste el objetivo a tiempo. ¡Intenta de nuevo este nivel!</p>
+      <div class="row">
+        <button class="primary" id="btnRetry">Reintentar</button>
+        <button class="ghost" id="btnHome">Inicio</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="modalEnd" role="dialog" aria-modal="true">
+    <div class="card">
+      <h2>¡Felicidades! 🎉</h2>
+      <p>Has clasificado todos los residuos y ayudado a mantener <strong>Castilla limpia</strong>.</p>
+      <div class="row">
+        <button class="primary" onclick="location.reload()">Jugar de nuevo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- win sound (tiny base64 wav) -->
+  <audio id="winSound" preload="auto" src="data:audio/wav;base64,UklGRgQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAACABYAAAB9AAAAPwAAABkAAABWYXZlIG1pbmkKAAAAAAAAPwAAAP8AAAA/AAAA/wAAAD8AAAD/AAAAfwAAAH8AAAA/AAAA/wAAAD8AAAA=" ></audio>
+
+  <script>
+  ;(() => {
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    // --- Responsive canvas ---
+    function fitCanvas(){
+      const wrapW = Math.min(1024, window.innerWidth*0.96);
+      const ratio = 16/9;
+      const h = Math.min(window.innerHeight*0.56, wrapW/ratio);
+      canvas.style.width = wrapW+'px';
+      canvas.style.height = h+'px';
+    }
+    window.addEventListener('resize', fitCanvas); fitCanvas();
+
+    // --- Levels config (con iconos + tiempo) ---
+    const LEVELS = [
+      { key:'rojo', name:'Rojo', color:'#e74c3c', target: 12, time: 60, items:[
+        {label:'Botella', icon:'🍼'},{label:'Bolsa', icon:'🛍️'},{label:'Vaso PET', icon:'🥤'},{label:'Tapa', icon:'⚪'},{label:'Env. Snack', icon:'🍬'}
+      ] },
+      { key:'azul', name:'Azul', color:'#3498db', target: 12, time: 45, items:[
+        {label:'Papel', icon:'📄'},{label:'Cartón', icon:'📦'},{label:'Periódico', icon:'📰'},{label:'Libro', icon:'📚'},{label:'Sobre', icon:'✉️'}
+      ] },
+      { key:'verde', name:'Verde', color:'#2ecc71', target: 12, time: 40, items:[
+        {label:'Botella Vidrio', icon:'🍾'},{label:'Frasco', icon:'🥛'},{label:'Vaso Vidrio', icon:'🥂'},{label:'Ventana', icon:'🪟'}
+      ] },
+      { key:'marron', name:'Marrón', color:'#8e6a3a', target: 12, time: 35, items:[
+        {label:'Cáscara', icon:'🍌'},{label:'Restos', icon:'🍎'},{label:'Hueso', icon:'🍖'},{label:'Hoja', icon:'🍂'}
+      ] },
+      { key:'amarillo', name:'Amarillo', color:'#f1c40f', target: 12, time: 30, items:[
+        {label:'Pila', icon:'🔋'},{label:'Aerosol', icon:'🧴'},{label:'Lámpara', icon:'💡'},{label:'Medicamento', icon:'💊'}
+      ] }
+    ];
+
+    // --- State ---
+    let levelIndex = 0;
+    let score = 0;
+    let running = false;
+    let speedMultiplier = 1; // increases per level
+    let spawnTimer = 0;
+    let timeLeft = 0; // seconds
+
+    const hudLevel = document.getElementById('levelName');
+    const hudScore = document.getElementById('score');
+    const hudTarget = document.getElementById('target');
+    const hudSpd = document.getElementById('spd');
+    const hudTime = document.getElementById('time');
+    const progressBar = document.getElementById('progressBar');
+
+    // --- Player bin ---
+    const bin = { x: canvas.width/2-70, y: canvas.height-70, w: 140, h: 42, speed: 7 };
+
+    // --- Objects ---
+    const drops = [];
+
+    function rnd(arr){ return arr[ (Math.random()*arr.length)|0 ]; }
+
+    function spawnDrop(){
+      const level = LEVELS[levelIndex];
+      const item = rnd(level.items);
+      const drop = {
+        x: 30 + Math.random()*(canvas.width-60),
+        y: -20,
+        r: 18 + Math.random()*8,
+        vy: (2 + Math.random()*1.5) * speedMultiplier,
+        label: item.label,
+        icon: item.icon,
+        color: level.color
+      };
+      drops.push(drop);
+    }
+
+    // --- Controls ---
+    const keys = {left:false,right:false};
+    window.addEventListener('keydown', e=>{
+      if(e.key==='ArrowLeft') keys.left = true;
+      if(e.key==='ArrowRight') keys.right = true;
+    });
+    window.addEventListener('keyup', e=>{
+      if(e.key==='ArrowLeft') keys.left = false;
+      if(e.key==='ArrowRight') keys.right = false;
+    });
+
+    // Touch controls
+    const touch = {left:false,right:false};
+    const cwrap = document.getElementById('touchControls');
+    const btnL = document.getElementById('btnLeft');
+    const btnR = document.getElementById('btnRight');
+    const setTouch = (side, val)=>{ touch[side]=val; };
+    const bindBtn = (btn, side)=>{
+      ['touchstart','mousedown'].forEach(ev=>btn.addEventListener(ev,()=>setTouch(side,true)));
+      ['touchend','touchcancel','mouseup','mouseleave'].forEach(ev=>btn.addEventListener(ev,()=>setTouch(side,false)));
+    };
+    bindBtn(btnL,'left'); bindBtn(btnR,'right');
+
+    // --- Modals ---
+    const modalStart = document.getElementById('modalStart');
+    const modalLevel = document.getElementById('modalLevel');
+    const modalFail = document.getElementById('modalFail');
+    const modalEnd = document.getElementById('modalEnd');
+    document.getElementById('btnPlay').addEventListener('click', ()=>{
+      modalStart.classList.remove('open');
+      startLevel(0);
+    });
+    document.getElementById('btnNext').addEventListener('click', ()=>{
+      modalLevel.classList.remove('open');
+      startLevel(levelIndex+1);
+    });
+    document.getElementById('btnRetry').addEventListener('click', ()=>{
+      modalFail.classList.remove('open');
+      startLevel(levelIndex);
+    });
+    document.getElementById('btnHome').addEventListener('click', ()=>{
+      modalFail.classList.remove('open');
+      modalStart.classList.add('open');
+    });
+
+    function openLevelModal(title, msg){
+      document.getElementById('levelTitle').textContent = title;
+      document.getElementById('levelMsg').textContent = msg;
+      modalLevel.classList.add('open');
+    }
+
+    function openFailModal(){
+      document.getElementById('failMsg').textContent = `Te faltaron ${Math.max(0, LEVELS[levelIndex].target - score)} objetos para completar el nivel.`;
+      modalFail.classList.add('open');
+    }
+
+    // --- Level handling ---
+    function startLevel(idx){
+      if(idx >= LEVELS.length){
+        modalEnd.classList.add('open');
+        running = false; return;
+      }
+      levelIndex = idx;
+      score = 0;
+      drops.length = 0;
+      spawnTimer = 0;
+      speedMultiplier = 1 + levelIndex*0.15;
+      timeLeft = LEVELS[levelIndex].time; // seconds
+      hudSpd.textContent = (speedMultiplier.toFixed(2)+'x').replace(/\.00x$/, 'x');
+      const level = LEVELS[levelIndex];
+      hudLevel.textContent = level.name;
+      hudLevel.className = 'badge ' + (
+        level.key==='rojo'?'b-red': level.key==='azul'?'b-blue': level.key==='verde'?'b-green': level.key==='marron'?'b-brown':'b-yellow'
+      );
+      hudTarget.textContent = level.target;
+      progressBar.style.width = '0%';
+      running = true;
+    }
+
+    // --- Win sound ---
+    const win = document.getElementById('winSound');
+    function playWin(){
+      try{ win.currentTime = 0; win.play().catch(()=>{}); }catch(e){}
+    }
+
+    // --- Game loop ---
+    let last = performance.now();
+    function loop(ts){
+      const dt = Math.min(50, ts - last); last = ts;
+      if(running){
+        update(dt);
+        draw();
+      }
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    function update(dt){
+      const level = LEVELS[levelIndex];
+      // move bin
+      const movingLeft = keys.left || touch.left;
+      const movingRight = keys.right || touch.right;
+      if(movingLeft) bin.x -= bin.speed*speedMultiplier;
+      if(movingRight) bin.x += bin.speed*speedMultiplier;
+      bin.x = Math.max(10, Math.min(canvas.width - bin.w - 10, bin.x));
+
+      // timer
+      timeLeft -= dt/1000;
+      if(timeLeft < 0){
+        running = false;
+        openFailModal();
+        return;
+      }
+
+      // spawn
+      spawnTimer -= dt;
+      if(spawnTimer <= 0){
+        spawnDrop();
+        spawnTimer = 700 - levelIndex*60; // faster on later levels
+        if(spawnTimer < 360) spawnTimer = 360;
+      }
+
+      // update drops
+      for(let i=drops.length-1;i>=0;i--){
+        const d = drops[i];
+        d.y += d.vy;
+        // collision with bin
+        if(d.y + d.r >= bin.y && d.y - d.r <= bin.y + bin.h && d.x > bin.x && d.x < bin.x + bin.w){
+          drops.splice(i,1); // caught
+          score++;
+          hudScore.textContent = score;
+          const pct = Math.min(100, Math.round((score/level.target)*100));
+          progressBar.style.width = pct + '%';
+          if(score >= level.target){
+            running = false;
+            playWin();
+            const nxt = LEVELS[levelIndex+1];
+            if(nxt){
+              openLevelModal(`Nivel ${level.name} completado ✅`, `¡Muy bien! Ahora clasifica: Nivel ${nxt.name}.`);
+            } else {
+              modalEnd.classList.add('open');
+            }
+          }
+          continue;
+        }
+        // remove if off screen
+        if(d.y - d.r > canvas.height){
+          drops.splice(i,1);
+        }
+      }
+    }
+
+    function draw(){
+      const level = LEVELS[levelIndex];
+      // clear
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      // background simple
+      ctx.save();
+      ctx.fillStyle = '#07111a';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle = 'rgba(46,204,113,.08)';
+      for(let i=0;i<8;i++){
+        const w = 60 + i*30, h = 80 + Math.random()*40, x = i*120 + 30, y = canvas.height - h - 90;
+        ctx.fillRect(x,y,w,h);
+      }
+      ctx.restore();
+
+      // ground
+      ctx.fillStyle = '#0a1824';
+      ctx.fillRect(0, canvas.height-60, canvas.width, 60);
+
+      // bin (player)
+      const grd = ctx.createLinearGradient(bin.x,bin.y,bin.x,bin.y+bin.h);
+      grd.addColorStop(0, shade(level.color, 0));
+      grd.addColorStop(1, shade(level.color, -35));
+      roundRect(ctx, bin.x, bin.y, bin.w, bin.h, 10, grd);
+      ctx.fillStyle = '#051018';
+      ctx.font = 'bold 16px Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(level.name.toUpperCase(), bin.x + bin.w/2, bin.y + bin.h/2 + 6);
+
+      // falling drops (círculo con icono)
+      for(const d of drops){
+        ctx.save();
+        circle(ctx, d.x, d.y, d.r, level.color);
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#041017';
+        ctx.fillText(d.icon, d.x, d.y + 6);
+        ctx.restore();
+      }
+
+      // HUD time mm:ss
+      const t = Math.max(0, Math.floor(timeLeft));
+      const mm = String(Math.floor(t/60)).padStart(2,'0');
+      const ss = String(t%60).padStart(2,'0');
+      hudTime.textContent = `${mm}:${ss}`;
+    }
+
+    function shortLabel(label){
+      const map = {
+        'Botella':'PET', 'Bolsa':'BLS', 'Env. Snack':'SNK', 'Vaso PET':'PET', 'Tapa':'TP',
+        'Papel':'PAP', 'Cartón':'CAR', 'Periódico':'PER', 'Libro':'LIB', 'Sobre':'SOB',
+        'Botella Vidrio':'VID', 'Frasco':'VID', 'Vaso Vidrio':'VID', 'Ventana':'VID',
+        'Cáscara':'ORG', 'Restos':'ORG', 'Hoja':'ORG', 'Hueso':'ORG',
+        'Pila':'TOX', 'Aerosol':'TOX', 'Lámpara':'TOX', 'Medicamento':'TOX'
+      };
+      return map[label] || label.slice(0,3).toUpperCase();
+    }
+
+    // helpers
+    function roundRect(ctx,x,y,w,h,r,fill){
+      const rr = Math.min(r, w/2, h/2);
+      ctx.beginPath();
+      ctx.moveTo(x+rr,y);
+      ctx.arcTo(x+w,y,x+w,y+h,rr);
+      ctx.arcTo(x+w,y+h,x,y+h,rr);
+      ctx.arcTo(x,y+h,x,y,rr);
+      ctx.arcTo(x,y,x+w,y,rr);
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+    }
+    function circle(ctx,x,y,r,color){
+      const grd = ctx.createRadialGradient(x-4,y-6,4,x,y,r);
+      grd.addColorStop(0,'#ffffff');
+      grd.addColorStop(1,color);
+      ctx.beginPath();
+      ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.closePath();
+      ctx.fillStyle = grd; ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.stroke();
+    }
+    function shade(hex, amt){
+      let c = hex.replace('#','');
+      if(c.length===3) c = c.split('').map(ch=>ch+ch).join('');
+      const num = parseInt(c,16);
+      let r = (num >> 16) + amt;
+      let g = (num >> 8 & 0x00FF) + amt;
+      let b = (num & 0x0000FF) + amt;
+      r = Math.max(0,Math.min(255,r));
+      g = Math.max(0,Math.min(255,g));
+      b = Math.max(0,Math.min(255,b));
+      return '#' + (b | (g << 8) | (r << 16)).toString(16).padStart(6,'0');
+    }
+
+    // keep bin on ground on resize
+    function keepBinOnGround(){ bin.y = canvas.height - 70; }
+    keepBinOnGround();
+    const ro = new ResizeObserver(()=>keepBinOnGround());
+    ro.observe(canvas);
+
+  })();
+  </script>
+</body>
+</html>
